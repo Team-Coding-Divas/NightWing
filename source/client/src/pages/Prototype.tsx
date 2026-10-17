@@ -1400,6 +1400,7 @@ function Workspace({ session, onSignOut, segs, reports, setReports, extVer, onSe
   const who = session.role === "citizen"
     ? `${session.name} · Citizen${womanVerified ? " · Verified woman" : ""}`
     : `${session.officerId} · Ward officer`;
+  const whoShort = session.role === "citizen" ? `${session.name}${womanVerified ? " · Verified" : ""}` : session.officerId;
 
   return (
     <div className="pt-app">
@@ -1412,7 +1413,7 @@ function Workspace({ session, onSignOut, segs, reports, setReports, extVer, onSe
             <span className="brand-name">NightWing<span className="brand-period">.</span></span>
           </a>
           <span className="pt-app-name">{citizen ? "Citizen app" : "City Authority console"}</span>
-          <div className="pt-user"><span className={`pt-chip pt-sync pt-sync-${sync.mode}`} title={sync.detail}>{sync.mode === "live" ? <Cloud size={13} /> : <CloudOff size={13} />} {sync.mode === "live" ? "Live sync" : sync.mode === "error" ? "Sync error" : "Synced in this browser"}</span><span className="pt-chip pt-chip-ink">{who}</span><button type="button" className="pt-btn pt-btn-sm" onClick={onSignOut}><LogOut size={14} /> Sign out</button></div>
+          <div className="pt-user"><span className={`pt-chip pt-sync pt-sync-${sync.mode}`} title={sync.detail}>{sync.mode === "live" ? <Cloud size={13} /> : <CloudOff size={13} />} {sync.mode === "live" ? "Live sync" : sync.mode === "error" ? "Sync error" : "Synced in this browser"}</span><span className="pt-chip pt-chip-ink" title={who}><span className="pt-who-full">{who}</span><span className="pt-who-short">{whoShort}</span></span><button type="button" className="pt-btn pt-btn-sm" onClick={onSignOut}><LogOut size={14} /> Sign out</button></div>
         </div>
         <nav className="pt-tabs" role="tablist" aria-label="Views">
           {tabs.map((t) => <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>{t.icon}{t.label}</button>)}

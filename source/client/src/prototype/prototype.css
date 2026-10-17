@@ -325,3 +325,9 @@
 .pt-result select { width: auto; max-width: 190px; padding: 6px 8px; }
 .pt-pilot { margin-top: 16px; border: 1px dashed #c8d8ce; border-radius: 8px; padding: 10px 12px; background: #fbfcfa; }
 .pt-pilot summary { display: flex; align-items: center; gap: 6px; cursor: pointer; font: 700 12.5px var(--font-head); color: #4f625f; }
+.pt-who-short { display: none; }
+@media (max-width: 600px) {
+  .pt-who-full { display: none; }
+  .pt-who-short { display: inline; }
+  .pt-user .pt-chip-ink { max-width: 170px; }
+}
