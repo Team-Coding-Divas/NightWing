@@ -6,7 +6,7 @@
 
 This repository holds the ready-built website and working prototype (`index.html`, served by Vercel and GitHub Pages) and the full source code in [`source/`](source/). Open `/app` to go straight to the prototype.
 
-**Live:** https://team-coding-divas.github.io/NightWing/
+**Live:** https://night-wing-ruby.vercel.app (prototype: https://night-wing-ruby.vercel.app/app) · also on GitHub Pages: https://team-coding-divas.github.io/NightWing/
 
 ![NightWing landing page](screenshots/landing.png)
 
