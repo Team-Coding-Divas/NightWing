@@ -4,7 +4,9 @@
 
 > ⚠️ Prototype with **simulated** pilot data. Not a live safety service. In an emergency in India, call **112**.
 
-This repository is the ready-built website and working prototype (one file: `index.html`). Open `/app` to go straight to the prototype.
+This repository holds the ready-built website and working prototype (`index.html`, served by Vercel and GitHub Pages) and the full source code in [`source/`](source/). Open `/app` to go straight to the prototype.
+
+**Live:** https://team-coding-divas.github.io/NightWing/
 
 ![NightWing landing page](screenshots/landing.png)
 
@@ -17,8 +19,17 @@ This repository is the ready-built website and working prototype (one file: `ind
 **Presenting tips:** press **Reset demo data** on the sign-in screen before you start; open the site in two windows (citizen and official) — they stay in sync; dashed buttons are demo controls.
 
 ## Features
-- **Citizen app:** Danger map with a Dark Hours slider, SafeRoute (fastest vs. safer) with English/Tamil voice alerts, Report a light (photo, GPS pin, duplicate merging), Help map your street (real camera light meter, bump detector and GPS, sent straight to the map), and Women's Safety Mode (Ride Watch, Smart Check-In, WhatsApp/SMS alerts with a GPS map link) for verified women.
+- **Citizen app:** Danger map with a Dark Hours slider, SafeRoute (fastest vs. safer) with English/Tamil voice alerts, Report a light (photo, GPS pin, duplicate merging), Help map your street (real camera light meter, bump detector and GPS, added to the map, confirmed once 3 residents measure the same road), and Women's Safety Mode (Ride Watch, Smart Check-In, WhatsApp/SMS alerts with a GPS map link) for verified women.
 - **City Authority console:** citizen reports with a 48-hour inspection target, Smart Outage Diagnosis (bulb vs. power cut), ranked repair list with tunable Danger Index weights, repairs closed only by residents, ward report, and the Civic Bridge with a Joint Safety Ledger.
+
+## Repository layout
+| Path | What it is |
+|---|---|
+| `index.html` | The whole website and prototype in one pre-built file |
+| `nightwing-config.js` | Optional live-sync setting (Firebase URL) |
+| `screenshots/` | Images used in this README |
+| `source/` | Full React + TypeScript source (see [`source/README.md`](source/README.md)) |
+| `vercel.json` | Tells Vercel to serve the pre-built site with no build step |
 
 ## Deploy
 - **Vercel:** Add New → Project → import this repository → Deploy (no settings to change).

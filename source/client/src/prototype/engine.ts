@@ -33,7 +33,8 @@ export interface Segment {
   fault: Fault;
   ticket?: string;
   foundBy?: string;
-  measured?: number;      // light level from a real Sensor check reading (0-1), overrides the simulated value
+  samples?: Record<string, number>; // residents' light measurements (0-1), one per person
+  bumpBy?: string[];      // residents whose phones felt a pothole bump here
 }
 
 export const M_PER_UNIT = 5;          // 1 map unit = 5 metres
@@ -122,9 +123,20 @@ export function lightAt(e: Segment, hour: number): number {
   if (e.fault === "power") return 0.05;
   if (e.status === "verified") return 0.85;
   if (e.fault === "bulb") return 0.08;
-  if (e.measured != null) return e.measured;
-  if (e.failAt && hour >= e.failAt) return 0.1;
-  return e.base;
+  const sim = e.failAt && hour >= e.failAt ? 0.1 : e.base;
+  const m = measuredLight(e);
+  if (!m) return sim;
+  // One reading is only a hint: residents' readings take over gradually and fully count from CONFIRM_READINGS people.
+  const w = Math.min(1, m.count / CONFIRM_READINGS);
+  return sim * (1 - w) + m.avg * w;
+}
+/** Readings needed before residents' measurements fully replace the estimate for a road. */
+export const CONFIRM_READINGS = 3;
+/** Pothole bumps from this many different residents add a confirmed pothole. */
+export const CONFIRM_BUMPS = 2;
+export function measuredLight(e: Segment): { avg: number; count: number } | null {
+  const v = Object.values(e.samples || {});
+  return v.length ? { avg: v.reduce((a, b) => a + b, 0) / v.length, count: v.length } : null;
 }
 export const lightCat = (l: number): LightCat => (l >= 0.6 ? "lit" : l >= 0.3 ? "dim" : "dark");
 /** Danger Index weights. Starting values; city engineers can tune them in the console. Always sum to 1. */

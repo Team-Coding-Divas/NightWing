@@ -223,7 +223,7 @@ export default function Home() {
                 <li><BadgeCheck size={14} /> Women's Safety Mode for women, after one-time DigiLocker verification: Ride Watch and Smart Check-In</li>
                 <li><MessageCircle size={14} /> One-tap WhatsApp or SMS alerts to trusted contacts, with the vehicle number</li>
                 <li><Lightbulb size={14} /> Report a broken streetlight with a photo and GPS pin, then confirm the repair yourself</li>
-                <li><Check size={14} /> Sensor check: test your phone's light meter, bump detector and GPS on a real street</li>
+                <li><Check size={14} /> Help map your street: measure a dark street in one tap with your phone's camera, motion sensor and GPS</li>
               </ul>
               <div className="app-access"><ShieldCheck size={15} /><span>Everyone can use the map, routes and reports. Women verify once through DigiLocker to unlock Women's Safety Mode. NightWing keeps only a "verified" flag, never documents.</span></div>
             </article>

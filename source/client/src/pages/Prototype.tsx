@@ -4,8 +4,8 @@ import {
   Languages, Lightbulb, Lock, LogOut, MapPin, MessageCircle, Navigation, Phone, RefreshCw, Send, ShieldCheck, SlidersHorizontal, ThumbsDown, ThumbsUp, Truck, UserRound, Users, Volume2, Wrench, X, Zap,
 } from "lucide-react";
 import {
-  DEFAULT_WEIGHTS, LANDMARKS, M_PER_UNIT, NODES, SAFE_SPOTS, WEIGHTS, buildIndex, createSegments, danger, diagnose, dijkstra, hazardText, hazardTextTa, hourLabel,
-  level, lightAt, lightCat, mapLink, metres, nearestSafeSpot, nearestSegment, parts, priority, priorityList, routeStats, setWeights, toLatLng, zoneOf,
+  CONFIRM_BUMPS, CONFIRM_READINGS, DEFAULT_WEIGHTS, LANDMARKS, M_PER_UNIT, NODES, SAFE_SPOTS, WEIGHTS, buildIndex, createSegments, danger, diagnose, dijkstra, hazardText, hazardTextTa, hourLabel,
+  level, lightAt, lightCat, mapLink, measuredLight, metres, nearestSafeSpot, nearestSegment, parts, priority, priorityList, routeStats, setWeights, toLatLng, zoneOf,
   type NodeId, type Route, type Segment,
 } from "@/prototype/engine";
 import "@/prototype/prototype.css";
@@ -152,7 +152,7 @@ function SignIn({ onEnter, onReset }: { onEnter: (s: Session) => void; onReset: 
           <h1>Sign in to<br /><em>NightWing.</em></h1>
           <p>One platform, two apps. Each person sees only what they need.</p>
           <ul className="pt-gate-points">
-            <li><span className="pt-dot pt-dot-green" /><div><strong>Citizens</strong><small>Danger map, safer routes, light reports and a sensor check. Women who verify once through DigiLocker also get Women's Safety Mode.</small></div></li>
+            <li><span className="pt-dot pt-dot-green" /><div><strong>Citizens</strong><small>Danger map, safer routes, light reports and "Help map your street". Women who verify once through DigiLocker also get Women's Safety Mode.</small></div></li>
             <li><span className="pt-dot pt-dot-peach" /><div><strong>City officials</strong><small>Repair dashboard, outage diagnosis and the Civic Bridge. Citizens cannot open it.</small></div></li>
           </ul>
           <p className="pt-fine">Simulated pilot data for one campus neighbourhood. The SMS code, DigiLocker step and officer login are demonstrations only; a real deployment checks them on a server.</p>
@@ -832,26 +832,65 @@ function Workspace({ session, onSignOut, segs, reports, setReports, extVer, onSe
     const near = nearestSegment(segs, geo.lat, geo.lng);
     if (near && near.metres < 150) setSRoad(near.seg.id);
   }, [geo.lat, geo.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [measuring, setMeasuring] = useState(false);
+  async function measureStreet() {
+    setMeasuring(true); setSMsg(null); bumpsSent.current = motion.bumps;
+    if (!motion.on) startMotion();   // ask for motion first, while the tap still counts as a user gesture
+    if (!geo.on) startGeo();
+    if (!cam.on) await startCamera();
+    window.setTimeout(() => { setMeasuring(false); record("Street measurement"); }, 3000);
+  }
+  function stopMeasuring() { stopCamera(); stopMotion(); stopGeo(); setMeasuring(false); bumpsSent.current = 0; }
   function simulateBump() {
     const j = 7 + Math.random() * 4;
     lastBump.current = Date.now();
     setMotion((m) => ({ ...m, on: m.on, bumps: m.bumps + 1, jolt: +j.toFixed(1), peak: Math.max(m.peak, +j.toFixed(1)) }));
     record(`Bump detected (${j.toFixed(1)} m/s², demo)`, j, true);
   }
+  const lightValue = (label: string) => (label === "lit" ? 0.85 : label === "dim" ? 0.45 : 0.1);
+  /** Add one resident's reading. Each person counts once per road; it takes CONFIRM_READINGS people to confirm a road's light level. */
+  function addReading(e: Segment, who: string, light: number | null, bumped: boolean) {
+    if (light != null) e.samples = { ...(e.samples || {}), [who]: light };
+    if (bumped && !(e.bumpBy || []).includes(who)) {
+      e.bumpBy = [...(e.bumpBy || []), who];
+      if (e.bumpBy.length >= CONFIRM_BUMPS) { e.potholes = Math.min(3, e.potholes + 1); e.bumpBy = []; }
+    }
+    const m = measuredLight(e);
+    if (m && m.count >= CONFIRM_READINGS) e.persist = m.avg >= 0.6 ? 0 : Math.max(1, e.persist);
+    e.reports += 1; e.foundBy = "Resident measurements";
+  }
+  function progressText(e: Segment) {
+    const n = Object.keys(e.samples || {}).length, b = (e.bumpBy || []).length;
+    const light = n >= CONFIRM_READINGS ? `Light level confirmed by ${n} residents.` : `${n} of ${CONFIRM_READINGS} readings needed to confirm the light level.`;
+    const pot = b > 0 ? ` Pothole bump: ${b} of ${CONFIRM_BUMPS} residents.` : "";
+    return light + pot;
+  }
   function sendToMap() {
     const e = segs[sRoad];
     const L = live.current, lf = lightFrom(L.lux, L.luma);
     const newBumps = motion.bumps - bumpsSent.current;
-    if (lf.v == null && newBumps <= 0) { setSMsg({ tone: "warn", text: "Start the light meter, or detect a bump, before sending a reading to the map." }); return; }
+    if (lf.v == null && newBumps <= 0) { setSMsg({ tone: "warn", text: "Tap Measure this street first, so there is a reading to add." }); return; }
     const before = zoneOf(e, hour), dBefore = Math.round(danger(e, hour) * 100);
-    if (lf.v != null) e.measured = lf.label === "lit" ? 0.85 : lf.label === "dim" ? 0.45 : 0.1;
-    if (newBumps > 0) { e.potholes = Math.min(3, e.potholes + 1); bumpsSent.current = motion.bumps; }
-    e.reports += 1; e.foundBy = "Sensor check";
+    const again = !!(e.samples && e.samples[reporterId]);
+    addReading(e, reporterId, lf.v != null ? lightValue(lf.label) : null, newBumps > 0);
+    if (newBumps > 0) bumpsSent.current = motion.bumps;
     const after = zoneOf(e, hour), dAfter = Math.round(danger(e, hour) * 100);
     record(`Sent to map: ${e.name}`);
-    addBridge(`Sensor check reading added to ${e.name}: ${lf.v != null ? lf.label : "no light reading"}${newBumps > 0 ? ", pothole bump" : ""}.`);
+    addBridge(`Resident measurement added to ${e.name}: ${lf.v != null ? lf.label : "no light reading"}${newBumps > 0 ? ", pothole bump" : ""}. ${progressText(e)}`);
     setSel(e.id); bump();
-    setSMsg({ tone: "ok", text: `${e.name} updated from your reading: Danger Index ${dBefore} → ${dAfter}, ${zoneLabel[before].toLowerCase()} → ${zoneLabel[after].toLowerCase()}. Open the Danger map to see it.` });
+    setSMsg({ tone: "ok", text: `Thank you! ${again ? "Your earlier reading was updated, since each person counts once per road. " : ""}${e.name}: Danger Index ${dBefore} → ${dAfter}${before !== after ? `, now a ${zoneLabel[after].toLowerCase()}` : ""}. ${progressText(e)}` });
+  }
+  /** Demo: two neighbours measure the same road, so the reading is confirmed. */
+  function simulateNeighbours() {
+    const e = segs[sRoad];
+    const mine = e.samples?.[reporterId] ?? lightValue(lightFrom(live.current.lux, live.current.luma).label);
+    const before = zoneOf(e, hour), dBefore = Math.round(danger(e, hour) * 100);
+    const bumped = (e.bumpBy || []).length > 0;
+    ["demo-neighbour-1", "demo-neighbour-2"].forEach((id, i) => addReading(e, id, mine, bumped && i === 0));
+    const after = zoneOf(e, hour), dAfter = Math.round(danger(e, hour) * 100);
+    addBridge(`Two more residents measured ${e.name} (demo). ${progressText(e)}`);
+    setSel(e.id); bump();
+    setSMsg({ tone: "ok", text: `Two neighbours measured ${e.name} too (demo). Danger Index ${dBefore} → ${dAfter}${before !== after ? `, now a ${zoneLabel[after].toLowerCase()}` : ""}. ${progressText(e)}` });
   }
   const csv = () => {
     const q = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -870,7 +909,7 @@ function Workspace({ session, onSignOut, segs, reports, setReports, extVer, onSe
     { id: "map", label: "Danger map", icon: <Eye size={15} /> },
     { id: "route", label: "SafeRoute", icon: <Navigation size={15} /> },
     { id: "report", label: `Report a light${updates.length || toConfirm.length ? ` (${updates.length + toConfirm.length})` : ""}`, icon: <Lightbulb size={15} /> },
-    { id: "sensor", label: "Sensor check", icon: <Activity size={15} /> },
+    { id: "sensor", label: "Help map your street", icon: <Activity size={15} /> },
     ...(isWoman ? [{ id: "women" as CitizenTab, label: womanVerified ? "Women's Safety" : "Women's Safety (verify)", icon: womanVerified ? <ShieldCheck size={15} /> : <Lock size={15} /> }] : []),
   ];
   const authorityTabs: { id: AuthorityTab; label: string; icon: ReactNode }[] = [
@@ -938,7 +977,7 @@ function Workspace({ session, onSignOut, segs, reports, setReports, extVer, onSe
         <div className="pt-segcard">
           <h3>{seg.name}</h3>
           <p className="pt-sub">{NODES[seg.a].name} to {NODES[seg.b].name} · {seg.area} · {metres(seg.len)} m</p>
-          <div className="pt-row"><Chip zone={z}>{zoneLabel[z]}</Chip><Chip>{lightCat(lightAt(seg, hour))} at {hourLabel(hour)}</Chip><Chip>{seg.potholes} pothole{seg.potholes === 1 ? "" : "s"}</Chip>{seg.fault === "power" && <Chip zone="orange">Power outage</Chip>}{seg.fault === "bulb" && <Chip zone="red">Bulb failure</Chip>}{seg.status === "verified" && <Chip zone="green">Repair verified</Chip>}{seg.measured != null && <Chip zone="ink">Measured by Sensor check</Chip>}</div>
+          <div className="pt-row"><Chip zone={z}>{zoneLabel[z]}</Chip><Chip>{lightCat(lightAt(seg, hour))} at {hourLabel(hour)}</Chip><Chip>{seg.potholes} pothole{seg.potholes === 1 ? "" : "s"}</Chip>{seg.fault === "power" && <Chip zone="orange">Power outage</Chip>}{seg.fault === "bulb" && <Chip zone="red">Bulb failure</Chip>}{seg.status === "verified" && <Chip zone="green">Repair verified</Chip>}{seg.samples && Object.keys(seg.samples).length > 0 && <Chip zone="ink">Measured by {Object.keys(seg.samples).length} resident{Object.keys(seg.samples).length === 1 ? "" : "s"}{Object.keys(seg.samples).length < CONFIRM_READINGS ? ` · ${Object.keys(seg.samples).length}/${CONFIRM_READINGS} to confirm` : " · confirmed"}</Chip>}</div>
           <div className="pt-score"><b>{Math.round(d * 100)}</b><Chip zone={lv.zone}>{lv.label} danger</Chip></div>
           <div className="pt-bars">{bar(`Darkness × ${WEIGHTS.dark.toFixed(2)}`, p.dark, "pt-fill-dark")}{bar(`Potholes × ${WEIGHTS.pot.toFixed(2)}`, p.pot, "pt-fill-road")}{bar(`Vulnerable × ${WEIGHTS.vuln.toFixed(2)}`, p.vuln, "pt-fill-context")}</div>
           <p className="pt-mini-title"><Clock3 size={13} /> Dark Hours timeline</p>
@@ -1255,60 +1294,67 @@ function Workspace({ session, onSignOut, segs, reports, setReports, extVer, onSe
 
   function sensorPanel() {
     const lf = lightFrom(cam.lux, cam.luma);
+    const road = segs[sRoad];
+    const lightZone = lf.label === "lit" ? "green" : lf.label === "dim" ? "orange" : lf.label === "dark" ? "red" : undefined;
+    const verdict = lf.label === "dark" ? "looks dark" : lf.label === "dim" ? "looks dimly lit" : lf.label === "lit" ? "looks well lit" : "is being measured";
     return (
       <>
-        <p className="pt-kicker">CITIZEN APP · SENSOR CHECK · REAL SENSORS</p>
-        <h2>Test your phone's sensors</h2>
-        <p className="pt-hint">This tab uses your phone's real sensors, not simulated data. It shows how NightWing would measure a road: light level, pothole bumps and position. Readings stay on this device until you export them.</p>
-        <div className="pt-sensors">
-          <div className="pt-sensor">
-            <h4><Camera size={15} /> Light level</h4>
-            <video ref={videoRef} className="pt-cam" muted playsInline aria-hidden={!cam.on} style={{ display: cam.on ? "block" : "none" }} />
-            <div className="pt-reading"><b>{lf.v ?? "–"}</b><span>{lf.src}</span></div>
-            <Chip zone={lf.label === "lit" ? "green" : lf.label === "dim" ? "orange" : lf.label === "dark" ? "red" : undefined}>{lf.label}</Chip>
-            <div className="pt-row" style={{ marginTop: 8 }}>{cam.on ? <button type="button" className="pt-btn pt-btn-sm" onClick={stopCamera}>Stop</button> : <button type="button" className="pt-btn pt-btn-sm pt-btn-primary" onClick={startCamera}>Start light meter</button>}</div>
-            {cam.msg && <p className="pt-fine">{cam.msg}</p>}
+        <p className="pt-kicker">CITIZEN APP · HELP MAP YOUR STREET</p>
+        <h2>Help map your street</h2>
+        <p className="pt-hint">Walking or riding down a street that feels dark? Measure it in one tap. Your phone checks how bright the street is with the camera, feels for potholes with its motion sensor and finds the road with GPS. Your reading is anonymous and makes the Danger map more accurate for everyone. One reading is a hint; a road's light level is confirmed when {CONFIRM_READINGS} different residents have measured it.</p>
+        <ol className="pt-howto">
+          <li><b>1</b><span>Hold your phone up, back camera facing along the road.</span></li>
+          <li><b>2</b><span>Tap <i>Measure this street</i> and walk or ride a few metres.</span></li>
+          <li><b>3</b><span>Check the road and tap <i>Add to map</i>.</span></li>
+        </ol>
+        {!measuring && !cam.on && <button type="button" className="pt-btn pt-btn-primary pt-measure" onClick={measureStreet}><Activity size={16} /> Measure this street</button>}
+        {(measuring || cam.on) && (
+          <div className="pt-result" aria-live="polite">
+            <video ref={videoRef} className="pt-cam" muted playsInline aria-hidden="true" style={{ display: cam.on ? "block" : "none" }} />
+            <p className="pt-result-title">{measuring ? "Measuring…" : <><b>{road?.name}</b> {verdict}</>}</p>
+            <div className="pt-row">
+              <Chip zone={lightZone}>Light: {lf.label}{lf.v != null ? ` (${lf.v})` : ""}</Chip>
+              <Chip zone={motion.bumps ? "orange" : undefined}>{motion.bumps} bump{motion.bumps === 1 ? "" : "s"}</Chip>
+              <Chip>{geo.lat != null ? `GPS ±${geo.acc} m` : "No GPS yet"}</Chip>
+            </div>
+            <div className="pt-row" style={{ marginTop: 10 }}>
+              <label className="pt-field pt-field-inline" htmlFor="pt-sroad"><span className="pt-sr">Road</span>
+                <select id="pt-sroad" value={sRoad} onChange={(e) => { setSRoad(Number(e.target.value)); setSMsg(null); }}>{segs.slice().sort((a, b) => a.name.localeCompare(b.name)).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+              </label>
+              <button type="button" className="pt-btn pt-btn-sm pt-btn-primary" disabled={measuring} onClick={sendToMap}><Send size={14} /> Add to map</button>
+              <button type="button" className="pt-btn pt-btn-sm pt-btn-demo" onClick={simulateBump}><Gauge size={14} /> Simulate a bump (demo)</button>
+              <button type="button" className="pt-btn pt-btn-sm pt-btn-demo" disabled={!segs[sRoad]?.samples?.[reporterId]} onClick={simulateNeighbours}><Users size={14} /> Two neighbours measure it too (demo)</button>
+              <button type="button" className="pt-btn pt-btn-sm" onClick={stopMeasuring}>Stop</button>
+            </div>
+            {geo.lat != null && <p className="pt-fine" style={{ marginBottom: 0 }}>The nearest road is picked from your GPS when you are in the pilot area. You can change it.</p>}
+            {[cam.msg, motion.msg, geo.msg].filter((m) => m && /not|blocked|no |No /.test(m)).map((m, i) => <p key={i} className="pt-fine" style={{ marginBottom: 0 }}>{m}</p>)}
           </div>
-          <div className="pt-sensor">
-            <h4><Gauge size={15} /> Bumps (accelerometer)</h4>
-            <div className="pt-reading"><b>{motion.on ? motion.jolt : "–"}</b><span>m/s² jolt · peak {motion.peak}</span></div>
-            <Chip zone={motion.bumps ? "orange" : undefined}>{motion.bumps} bump{motion.bumps === 1 ? "" : "s"} detected</Chip>
-            <div className="pt-row" style={{ marginTop: 8 }}>{motion.on ? <button type="button" className="pt-btn pt-btn-sm" onClick={stopMotion}>Stop</button> : <button type="button" className="pt-btn pt-btn-sm pt-btn-primary" onClick={startMotion}>Start bump detector</button>}</div>
-            {motion.msg && <p className="pt-fine">{motion.msg}</p>}
-          </div>
-          <div className="pt-sensor">
-            <h4><MapPin size={15} /> Position (GPS)</h4>
-            <div className="pt-reading"><b>{geo.lat != null ? `${geo.lat.toFixed(5)}, ${geo.lng!.toFixed(5)}` : "–"}</b><span>{geo.acc != null ? `±${geo.acc} m${geo.speed != null ? ` · ${geo.speed} km/h` : ""}` : "No fix yet"}</span></div>
-            <div className="pt-row" style={{ marginTop: 8 }}>{geo.on ? <button type="button" className="pt-btn pt-btn-sm" onClick={stopGeo}>Stop</button> : <button type="button" className="pt-btn pt-btn-sm pt-btn-primary" onClick={startGeo}>Start GPS</button>}{geo.lat != null && <a className="pt-btn pt-btn-sm" href={mapLink(geo.lat, geo.lng!)} target="_blank" rel="noopener noreferrer">Open map</a>}</div>
-            {geo.msg && <p className="pt-fine">{geo.msg}</p>}
-          </div>
-        </div>
-        <div className="pt-tomap">
-          <p className="pt-mini-title" style={{ marginTop: 0 }}><MapPin size={13} /> Add this reading to the Danger map</p>
-          <p className="pt-fine">Your light level (and any bump) updates the road's Danger Index, so the map shows what your phone measured.{geo.lat != null ? " The nearest road is picked from your GPS when you are in the pilot area." : ""}</p>
-          <div className="pt-row">
-            <label className="pt-field pt-field-inline" htmlFor="pt-sroad"><span className="pt-sr">Road</span>
-              <select id="pt-sroad" value={sRoad} onChange={(e) => { setSRoad(Number(e.target.value)); setSMsg(null); }}>{segs.slice().sort((a, b) => a.name.localeCompare(b.name)).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
-            </label>
-            <button type="button" className="pt-btn pt-btn-sm pt-btn-primary" onClick={sendToMap}><Send size={14} /> Send to map</button>
-            <button type="button" className="pt-btn pt-btn-sm pt-btn-demo" onClick={simulateBump}><Gauge size={14} /> Simulate a bump (demo)</button>
-          </div>
-          {sMsg && <p className={sMsg.tone === "ok" ? "pt-ok" : "pt-err"} role="status" style={{ marginTop: 8 }}>{sMsg.tone === "ok" ? <Check size={14} /> : <Info size={14} />} {sMsg.text}{sMsg.tone === "ok" && <> <button type="button" className="pt-link" onClick={() => setTab("map")}>Open map</button></>}</p>}
-        </div>
-        <div className="pt-row" style={{ marginTop: 12 }}>
-          <button type="button" className="pt-btn pt-btn-primary" onClick={() => record("Manual reading")}><Check size={14} /> Save a reading here</button>
-          <button type="button" className="pt-btn pt-btn-sm" disabled={!fieldLog.length} onClick={(e) => copyText(csv(), e.currentTarget)}><Copy size={14} /> Copy as CSV</button>
-          {window.self === window.top && <button type="button" className="pt-btn pt-btn-sm" disabled={!fieldLog.length} onClick={downloadCsv}><Download size={14} /> Download CSV</button>}
-          <button type="button" className="pt-btn pt-btn-sm" disabled={!fieldLog.length} onClick={() => setFieldLog([])}>Clear</button>
-        </div>
-        <p className="pt-mini-title">Field log ({fieldLog.length})</p>
-        {fieldLog.length === 0 ? <p className="pt-empty">Start the sensors, walk or ride a street at night, and save readings. Bumps are saved automatically.</p> : (
-          <div className="pt-ledger-wrap"><table className="pt-ledger" aria-label="Field log">
-            <thead><tr><th scope="col">Time</th><th scope="col">Light</th><th scope="col">Jolt</th><th scope="col">Position</th><th scope="col">Note</th></tr></thead>
-            <tbody>{fieldLog.slice(0, 50).map((r, i) => <tr key={i}><td><small>{r.time}</small></td><td>{r.light ?? "–"}<br /><small>{r.lightLabel}</small></td><td>{r.jolt || "–"}{r.bump && <><br /><small>bump</small></>}</td><td>{r.lat != null ? <a href={mapLink(r.lat, r.lng!)} target="_blank" rel="noopener noreferrer"><small>{r.lat.toFixed(5)}, {r.lng!.toFixed(5)}</small></a> : <small>no GPS</small>}</td><td><small>{r.note}</small></td></tr>)}</tbody>
-          </table></div>
         )}
-        <p className="pt-fine">Camera, motion and GPS need a phone browser over https (the GitHub Pages link works). Preview windows often block them. Thresholds are first guesses to be calibrated in the pilot.</p>
+        {sMsg && <p className={sMsg.tone === "ok" ? "pt-ok" : "pt-err"} role="status" style={{ marginTop: 10 }}>{sMsg.tone === "ok" ? <Check size={14} /> : <Info size={14} />} {sMsg.text}{sMsg.tone === "ok" && <> <button type="button" className="pt-link" onClick={() => setTab("map")}>Open map</button></>}</p>}
+        <p className="pt-fine" style={{ marginTop: 12 }}><ShieldCheck size={12} /> Only the road, light level and bumps are shared, never who measured it. In the full app this runs automatically during night trips if you turned on sharing at sign-in.</p>
+
+        <details className="pt-pilot">
+          <summary><ClipboardList size={14} /> Pilot team tools: raw readings and field log ({fieldLog.length})</summary>
+          <p className="pt-fine">For the NightWing team collecting pilot data on real streets. These are the raw sensor values behind each measurement.</p>
+          <div className="pt-sensors">
+            <div className="pt-sensor"><h4><Camera size={15} /> Light</h4><div className="pt-reading"><b>{lf.v ?? "–"}</b><span>{lf.src}</span></div></div>
+            <div className="pt-sensor"><h4><Gauge size={15} /> Motion</h4><div className="pt-reading"><b>{motion.on ? motion.jolt : "–"}</b><span>m/s² jolt · peak {motion.peak}</span></div></div>
+            <div className="pt-sensor"><h4><MapPin size={15} /> GPS</h4><div className="pt-reading"><b>{geo.lat != null ? `${geo.lat.toFixed(5)}, ${geo.lng!.toFixed(5)}` : "–"}</b><span>{geo.acc != null ? `±${geo.acc} m${geo.speed != null ? ` · ${geo.speed} km/h` : ""}` : "No fix yet"}</span></div></div>
+          </div>
+          <div className="pt-row" style={{ marginTop: 10 }}>
+            <button type="button" className="pt-btn pt-btn-sm" onClick={() => record("Manual reading")}><Check size={14} /> Save a reading</button>
+            <button type="button" className="pt-btn pt-btn-sm" disabled={!fieldLog.length} onClick={(e) => copyText(csv(), e.currentTarget)}><Copy size={14} /> Copy as CSV</button>
+            {window.self === window.top && <button type="button" className="pt-btn pt-btn-sm" disabled={!fieldLog.length} onClick={downloadCsv}><Download size={14} /> Download CSV</button>}
+            <button type="button" className="pt-btn pt-btn-sm" disabled={!fieldLog.length} onClick={() => setFieldLog([])}>Clear</button>
+          </div>
+          {fieldLog.length > 0 && (
+            <div className="pt-ledger-wrap" style={{ marginTop: 10 }}><table className="pt-ledger" aria-label="Field log">
+              <thead><tr><th scope="col">Time</th><th scope="col">Light</th><th scope="col">Jolt</th><th scope="col">Position</th><th scope="col">Note</th></tr></thead>
+              <tbody>{fieldLog.slice(0, 50).map((r, i) => <tr key={i}><td><small>{r.time}</small></td><td>{r.light ?? "–"}<br /><small>{r.lightLabel}</small></td><td>{r.jolt || "–"}{r.bump && <><br /><small>bump</small></>}</td><td>{r.lat != null ? <a href={mapLink(r.lat, r.lng!)} target="_blank" rel="noopener noreferrer"><small>{r.lat.toFixed(5)}, {r.lng!.toFixed(5)}</small></a> : <small>no GPS</small>}</td><td><small>{r.note}</small></td></tr>)}</tbody>
+            </table></div>
+          )}
+          <p className="pt-fine">Works on a phone browser over https (the Vercel or GitHub Pages link). The camera reading is a rough guide until it is calibrated against a lux meter in the pilot.</p>
+        </details>
       </>
     );
   }
@@ -1415,7 +1461,7 @@ function Workspace({ session, onSignOut, segs, reports, setReports, extVer, onSe
 /* Page + optional live sync                                           */
 /* ------------------------------------------------------------------ */
 type SyncState = { mode: "local" | "live" | "error"; detail: string };
-type SegState = Pick<Segment, "status" | "fault" | "ticket" | "foundBy" | "reports" | "persist" | "potholes"> & { measured?: number | null };
+type SegState = Pick<Segment, "status" | "fault" | "ticket" | "foundBy" | "reports" | "persist" | "potholes"> & { samples?: Record<string, number> | null; bumpBy?: string[] | null };
 interface SharedState { reports: StreetReport[]; segs: Record<number, SegState>; weights?: typeof WEIGHTS; updatedAt: number; by: string }
 
 /** Realtime Database URL from docs/nightwing-config.js (window.NIGHTWING_CONFIG). Empty = this device only. */
@@ -1447,7 +1493,7 @@ function applyReportsToSegs(s: Segment[], reports: StreetReport[]) {
 function applySegs(s: Segment[], st: Record<number, SegState> | undefined) {
   Object.entries(st || {}).forEach(([id, v]) => {
     const e = s[Number(id)]; if (!e) return;
-    Object.assign(e, { ...v, ticket: v.ticket || undefined, foundBy: v.foundBy || undefined, measured: v.measured ?? undefined });
+    Object.assign(e, { ...v, ticket: v.ticket || undefined, foundBy: v.foundBy || undefined, samples: v.samples || undefined, bumpBy: v.bumpBy || undefined });
     if (v.potholes == null) e.potholes = createSegments()[e.id].potholes;
   });
 }
@@ -1480,7 +1526,7 @@ export default function Prototype() {
   const onSegsChanged = useCallback(() => { dirty.current = true; setSegVer((v) => v + 1); }, []);
   const snapshot = (): SharedState => {
     const segs: Record<number, SegState> = {};
-    segsRef.current!.forEach((e) => { segs[e.id] = { status: e.status, fault: e.fault, ticket: e.ticket ?? "", foundBy: e.foundBy ?? "", reports: e.reports, persist: e.persist, potholes: e.potholes, measured: e.measured ?? null }; });
+    segsRef.current!.forEach((e) => { segs[e.id] = { status: e.status, fault: e.fault, ticket: e.ticket ?? "", foundBy: e.foundBy ?? "", reports: e.reports, persist: e.persist, potholes: e.potholes, samples: e.samples ?? null, bumpBy: e.bumpBy ?? null }; });
     return { reports, segs, weights: { ...WEIGHTS }, updatedAt: Date.now(), by: me.current };
   };
   // push local changes: to other windows of this browser (localStorage) and, if configured, to the shared database

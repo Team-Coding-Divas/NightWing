@@ -41,7 +41,7 @@
 
 ## [x] 9. Fixes from the judge review
 - Access: women can use the map, routes and reports without verifying; Women's Safety Mode stays locked until DigiLocker verification, which can now also be done inside the app. Demo officer login is shown on the form as a labelled test account with a "Fill demo login" button; the OTP screen says no SMS is sent.
-- Real sensors: new "Sensor check" tab with a camera light meter (or AmbientLightSensor), accelerometer bump detection and GPS; readings saved to a field log with CSV copy/download.
+- Real sensors: new "Help map your street" tab with a camera light meter (or AmbientLightSensor), accelerometer bump detection and GPS; readings saved to a field log with CSV copy/download.
 - Reports: GPS pin, real photo thumbnail, duplicate merging with supporters, limit of 3 open reports per person, "Mark not valid" with a reason, a 48-hour inspection target with overdue flags (and a demo clock), update notifications on sign-in. Repairs move to "residents to confirm"; only residents can close them from the citizen app (officials no longer have "Now lit / Still dark").
 - Alerts: Ride Watch / Check-In messages include a Google Maps link to the rider's GPS (or the simulated position), and voice alerts and messages can be in Tamil.
 - Danger Index weights can be tuned by city engineers in the Repair dashboard.
@@ -51,12 +51,12 @@
 
 ## [x] 10. Presenter fixes
 - Reset demo data button on the sign-in screen; windows of the same browser stay in sync (two-window presenting without a server).
-- Sensor check readings can be sent to a road and change its Danger Index on the map.
+- Help map your street readings can be sent to a road and change its Danger Index on the map.
 - Presenter speed for Ride Watch and Smart Check-In; Test voice with an English fallback when no Tamil voice is installed.
 - Dashed borders mark demo controls; DigiLocker is a consent screen that can be allowed or denied.
 - Phone layout: scrollable tabs, stacked cards, no sideways scrolling; system font fallback when Google Fonts can't load.
 
 ## [ ] 11. Still to do outside the code
-- Collect real night readings on 3–5 streets with the Sensor check tab and replace the simulated values.
+- Collect real night readings on 3–5 streets with the "Help map your street" tab and replace the simulated values.
 - Calibrate the light and bump thresholds and the Danger Index weights with the pilot data and a ward engineer.
 - Get a letter of interest from the ward office or a resident welfare association.

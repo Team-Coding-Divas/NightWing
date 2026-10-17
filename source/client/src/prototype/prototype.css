@@ -313,3 +313,15 @@
   .pt-gate-points { display: none; }
   .pt-gate-hero > p:not(.pt-fine) { font-size: 15px; }
 }
+
+/* ---------- Help map your street ---------- */
+.pt-howto { list-style: none; padding: 0; margin: 4px 0 14px; display: grid; gap: 7px; }
+.pt-howto li { display: flex; gap: 10px; align-items: center; font-size: 13px; color: #344c4a; }
+.pt-howto li b { flex: none; width: 24px; height: 24px; border-radius: 50%; background: #eef5f0; border: 1px solid #cfe2d6; color: #2e7259; display: grid; place-items: center; font: 700 12px var(--font-head); }
+.pt-measure { width: 100%; justify-content: center; padding: 14px 16px; font-size: 15px; }
+.pt-result { background: #fff; border: 1px solid #cfe2d6; border-radius: 10px; padding: 12px; }
+.pt-result .pt-cam { max-height: 140px; }
+.pt-result-title { font: 600 17px/1.3 var(--font-head); color: #2a3e42; margin: 0 0 8px; letter-spacing: -.3px; }
+.pt-result select { width: auto; max-width: 190px; padding: 6px 8px; }
+.pt-pilot { margin-top: 16px; border: 1px dashed #c8d8ce; border-radius: 8px; padding: 10px 12px; background: #fbfcfa; }
+.pt-pilot summary { display: flex; align-items: center; gap: 6px; cursor: pointer; font: 700 12.5px var(--font-head); color: #4f625f; }
